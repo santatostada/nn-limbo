@@ -4,39 +4,64 @@ import numpy as np
 def l2_regularization(W, reg_strength):
     '''
     Computes L2 regularization loss on weights and its gradient
-
     Arguments:
       W, np array - weights
       reg_strength - float value
-
     Returns:
       loss, single value - l2 regularization loss
       gradient, np.array same shape as W - gradient of weight by l2 loss
     '''
-    # TODO: Copy from previous assignment
-    raise Exception("Not implemented!")
+    loss = reg_strength * np.linalg.norm(W)**2
+    grad = reg_strength * 2 * W
 
     return loss, grad
+
+
+def softmax(predictions):
+    pred = predictions.copy()
+    if predictions.ndim == 1:
+        pred -= np.max(pred)
+        return np.exp(pred) / np.sum(np.exp(pred))
+    else:
+        pred -= np.max(predictions, axis=1).reshape(-1, 1)
+        return np.exp(pred)/np.sum(np.exp(pred), axis=1).reshape(-1, 1)
+    
+
+def cross_entropy_loss(probs, target_index):
+    if probs.ndim == 1:
+        return -np.log(probs[target_index])
+    else:
+        loss = 0
+        
+        for i in range(probs.shape[0]):
+            loss -= np.log(probs[i, target_index[i]])
+      
+        return loss/probs.shape[0]
 
 
 def softmax_with_cross_entropy(predictions, target_index):
     '''
     Computes softmax and cross-entropy loss for model predictions,
     including the gradient
-
     Arguments:
       predictions, np array, shape is either (N) or (batch_size, N) -
         classifier output
       target_index: np array of int, shape is (1) or (batch_size) -
         index of the true class for given sample(s)
-
     Returns:
       loss, single value - cross-entropy loss
       dprediction, np array same shape as predictions - gradient of predictions by loss value
     '''
-    # TODO copy from the previous assignment
-    raise Exception("Not implemented!")
-    return loss, dprediction
+    s = softmax(predictions)
+    loss = cross_entropy_loss(s, target_index)
+
+    if predictions.ndim == 1:
+        s[target_index] -= 1
+    else:
+        for i in range(s.shape[0]):
+            s[i, target_index[i]] -= 1
+        s /= s.shape[0]
+    return loss, s
 
 
 class Param:
@@ -54,17 +79,26 @@ class ReLULayer:
         pass
 
     def forward(self, X):
-        # TODO copy from the previous assignment
-        raise Exception("Not implemented!")
+        self.X = X
+        pred = np.maximum(0, X)
+        return pred
 
     def backward(self, d_out):
-        # TODO copy from the previous assignment
-        raise Exception("Not implemented!")
+        """
+        Backward pass
+        Arguments:
+        d_out, np array (batch_size, num_features) - gradient
+           of loss function with respect to output
+        Returns:
+        d_result: np array (batch_size, num_features) - gradient
+          with respect to input
+        """
+        d_result = d_out * (self.X >= 0)
         return d_result
 
     def params(self):
+        # ReLU Doesn't have any parameters
         return {}
-
 
 class FullyConnectedLayer:
     def __init__(self, n_input, n_output):
@@ -73,17 +107,30 @@ class FullyConnectedLayer:
         self.X = None
 
     def forward(self, X):
-        # TODO copy from the previous assignment
-        raise Exception("Not implemented!")
+        self.X = X
+        pred = np.dot(X, self.W.value) + self.B.value
+        return pred
 
     def backward(self, d_out):
-        # TODO copy from the previous assignment
-        
-        raise Exception("Not implemented!")        
+        """
+        Backward pass
+        Computes gradient with respect to input and
+        accumulates gradients within self.W and self.B
+        Arguments:
+        d_out, np array (batch_size, n_output) - gradient
+           of loss function with respect to output
+        Returns:
+        d_result: np array (batch_size, n_input) - gradient
+          with respect to input
+        """
+        self.W.grad = np.dot(self.X.T, d_out)
+        self.B.grad = np.sum(d_out, axis=0)[:, np.newaxis].T
+        d_input = np.dot(d_out, self.W.value.T)
+
         return d_input
 
     def params(self):
-        return { 'W': self.W, 'B': self.B }
+        return {'W': self.W, 'B': self.B}
 
     
 class ConvolutionalLayer:
@@ -115,45 +162,40 @@ class ConvolutionalLayer:
     def forward(self, X):
         batch_size, height, width, channels = X.shape
 
-        out_height = 0
-        out_width = 0
+        out_height = height + 2*self.padding - self.filter_size + 1
+        out_width = width + 2*self.padding - self.filter_size + 1
         
-        # TODO: Implement forward pass
-        # Hint: setup variables that hold the result
-        # and one x/y location at a time in the loop below
-        
-        # It's ok to use loops for going over width and height
-        # but try to avoid having any other loops
+        X_pad = np.zeros((batch_size, height+2*self.padding, width+2*self.padding, channels))
+        X_pad[:, self.padding:self.padding+height, self.padding:self.padding+width, :] = X
+
+        self.X_forward = (X, X_pad)
+
+        out = np.zeros((batch_size, out_height, out_width, self.out_channels))
+
         for y in range(out_height):
             for x in range(out_width):
-                # TODO: Implement forward pass for specific location
-                pass
-        raise Exception("Not implemented!")
+                window = X_pad[:, y:y+self.filter_size, x:x+self.filter_size, :, np.newaxis]
+                out[:, y, x, :] = np.sum(window*self.W.value, axis = (1, 2, 3)) + self.B.value
+        return out
 
 
     def backward(self, d_out):
-        # Hint: Forward pass was reduced to matrix multiply
-        # You already know how to backprop through that
-        # when you implemented FullyConnectedLayer
-        # Just do it the same number of times and accumulate gradients
+        X, X_pad = self.X_forward
+        X_grad = np.zeros(X_pad.shape)
 
         batch_size, height, width, channels = X.shape
         _, out_height, out_width, out_channels = d_out.shape
 
-        # TODO: Implement backward pass
-        # Same as forward, setup variables of the right shape that
-        # aggregate input gradient and fill them for every location
-        # of the output
-
-        # Try to avoid having any other loops here too
         for y in range(out_height):
             for x in range(out_width):
-                # TODO: Implement backward pass for specific location
-                # Aggregate gradients for both the input and
-                # the parameters (W and B)
-                pass
+                window = X_pad[:, y:y+self.filter_size, x:x+self.filter_size, :, np.newaxis]
+                grad = d_out[:, y, x, np.newaxis, np.newaxis, np.newaxis, :]
+                self.W.grad += np.sum(grad * window, axis=0)
+                X_grad[:, y:y + self.filter_size, x:x + self.filter_size, :] += np.sum(self.W.value * grad, axis=4)
 
-        raise Exception("Not implemented!")
+        self.B.grad += np.sum(d_out, axis=(0, 1, 2))
+        X_grad_without_pad = X_grad[:, self.padding:self.padding + height, self.padding:self.padding + width, :]
+        return X_grad_without_pad
 
     def params(self):
         return { 'W': self.W, 'B': self.B }
@@ -163,7 +205,6 @@ class MaxPoolingLayer:
     def __init__(self, pool_size, stride):
         '''
         Initializes the max pool
-
         Arguments:
         pool_size, int - area to pool
         stride, int - step size between pooling windows
@@ -174,14 +215,37 @@ class MaxPoolingLayer:
 
     def forward(self, X):
         batch_size, height, width, channels = X.shape
-        # TODO: Implement maxpool forward pass
-        # Hint: Similarly to Conv layer, loop on
-        # output x/y dimension
-        raise Exception("Not implemented!")
+        self.X = X
+
+        out_height = (height - self.pool_size) // self.stride + 1
+        out_width = (width - self.pool_size) // self.stride + 1
+        out = np.zeros((batch_size, out_height, out_width, channels))
+
+        for y in range(out_height):
+            for x in range(out_width):
+                window = X[:, y:y+self.pool_size, x:x+self.pool_size, :]
+                out[:, y, x, :] = np.max(window, axis=(1,2))
+
+        return out
 
     def backward(self, d_out):
-        # TODO: Implement maxpool backward pass
         batch_size, height, width, channels = self.X.shape
+
+        out_height = (height - self.pool_size) // self.stride + 1
+        out_width = (width - self.pool_size) // self.stride + 1
+        out = np.zeros(self.X.shape)
+
+        for y in range(out_height):
+            for x in range(out_width):
+                window = self.X[:, y:y+self.pool_size, x:x+self.pool_size, :]
+                grad = d_out[:, y, x, :]
+                max_elements = (window == np.max(window, axis=(1,2))[:, np.newaxis, np.newaxis, :])
+                grad = grad[:, np.newaxis, np.newaxis, :]
+
+                out[:, y:y+self.pool_size, x:x+self.pool_size, :] += grad*max_elements
+        return out
+
+
         raise Exception("Not implemented!")
 
     def params(self):
@@ -194,15 +258,11 @@ class Flattener:
 
     def forward(self, X):
         batch_size, height, width, channels = X.shape
-
-        # TODO: Implement forward pass
-        # Layer should return array with dimensions
-        # [batch_size, hight*width*channels]
-        raise Exception("Not implemented!")
+        self.X_shape = X.shape
+        return X.reshape(batch_size, height*width*channels)
 
     def backward(self, d_out):
-        # TODO: Implement backward pass
-        raise Exception("Not implemented!")
+        return d_out.reshape(self.X_shape)
 
     def params(self):
         # No params!
